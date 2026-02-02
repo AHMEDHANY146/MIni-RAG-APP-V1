@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from routes import base, data, nlp
-from motor.motor_asyncio import AsyncIOMotorClient
 from helpers.config import get_settings
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
@@ -32,7 +31,7 @@ app.add_middleware(
 async def startup_span():
     settings = get_settings()
     llm_provider_factory = LLMProviderFactory(settings)
-    vectordb_provider_factory = VectorDBProviderFactory(settings, db_client=app.state.db_session)
+    vectordb_provider_factory = VectorDBProviderFactory(settings)
 
     # generation client
     app.state.generation_client = llm_provider_factory.create_provider(provider=settings.GENERATION_BACKEND)
@@ -56,7 +55,7 @@ async def startup_span():
 
 
 async def shutdown_span():
-    app.state.vectordb_client.disconnect()
+    await app.state.vectordb_client.disconnect()
 
 app.include_router(base.base_router)
 app.include_router(data.data_router)

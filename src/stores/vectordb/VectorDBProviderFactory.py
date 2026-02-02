@@ -1,6 +1,4 @@
-from .providoers.QdrantDBProvider import QdrantDBProvider
-from .providoers.PGVectorProvider import PGVectorProvider
-from .providoers.SupabaseVectorProvider import SupabaseVectorProvider
+from .providers.SupabaseVectorProvider import SupabaseVectorProvider
 from .VectorDBEnums import VectorDBEnums
 from controllers.BaseController import BaseController
 
@@ -12,31 +10,14 @@ class VectorDBProviderFactory:
         self.db_client = db_client
 
     def create_provider(self, provider: str):
-        if provider == VectorDBEnums.QDRANT.value:
-            qdrant_db_client = self.base_controller.get_database_path(db_name=self.config.VECTOR_DB_PATH)
-
-            return QdrantDBProvider(
-                db_client=qdrant_db_client,
-                distance_method=self.config.VECTOR_DB_DISTANCE_METHOD,
-                default_vector_size=self.config.EMBEDDING_MODEL_SIZE or self.config.VECTOR_DB_DEFAULT_VECTOR_SIZE,
-                index_threshold=self.config.VECTOR_DB_INDEX_THRESHOLD,
-            )
-
-        if provider == VectorDBEnums.PGVECTOR.value:
-            return PGVectorProvider(
-                db_client=self.db_client,
-                distance_method=self.config.VECTOR_DB_DISTANCE_METHOD,
-                default_vector_size=self.config.EMBEDDING_MODEL_SIZE or self.config.VECTOR_DB_DEFAULT_VECTOR_SIZE,
-                index_threshold=self.config.VECTOR_DB_INDEX_THRESHOLD,
-            )
-
         if provider == VectorDBEnums.SUPABASE.value:
             return SupabaseVectorProvider(
                 distance_method=self.config.VECTOR_DB_DISTANCE_METHOD,
                 default_vector_size=self.config.EMBEDDING_MODEL_SIZE or self.config.VECTOR_DB_DEFAULT_VECTOR_SIZE,
             )
         
-        return None
+        raise ValueError(f"Unsupported Vector DB provider: {provider}. This app is optimized for Supabase.")
+
 
 
 

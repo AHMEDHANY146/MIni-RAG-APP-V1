@@ -1,5 +1,6 @@
 from fastapi import APIRouter, FastAPI, Depends, UploadFile, status, Request, File
 from fastapi.responses import JSONResponse
+from typing import Annotated
 import os
 from helpers.config import get_settings, Settings
 from controllers import DataController, ProjectController
@@ -7,6 +8,9 @@ import aiofiles
 from models.enums.ResponseEnums import ResponseStatus
 import logging
 from .schemas.data import ProcessRequest
+
+logger = logging.getLogger("uvicorn.error")
+
 from controllers.ProcessController import ProcessController
 from models.ProjectModel import ProjectModel
 from models.AssetModel import AssetModel
@@ -20,7 +24,23 @@ data_router = APIRouter(
 )
 
 @data_router.post("/upload/{project_id}")
-async def upload_data(request: Request, project_id: int, file: UploadFile = File(...), app_settings: Settings = Depends(get_settings)):
+async def upload_data(request: Request, project_id: int, file: UploadFile = File(None), app_settings: Settings = Depends(get_settings)):
+    if file is None:
+        form = await request.form()
+        logger.error(f"File field missing in request. Available keys: {list(form.keys())}")
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
+            content={
+                "detail": [
+                    {
+                        "type": "missing",
+                        "loc": ["body", "file"],
+                        "msg": "Field required",
+                        "input": None
+                    }
+                ]
+            }
+        )
     
     project_model = await ProjectModel.create_instance()
     project = await project_model.get_project_or_create_one(project_id=project_id)
@@ -31,23 +51,24 @@ async def upload_data(request: Request, project_id: int, file: UploadFile = File
     if not is_valid:
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"signal": result_signal, "message": "File validation failed."})
 
+
     project_dir_path = ProjectController().get_project_path(project_id=str(project_id))
     # os.makedirs(project_dir_path, exist_ok=True) # Likely not needed for Supabase mode, but keeping for path generation
     
     file_path, file_id = data_controller.generate_unique_file_path(original_file_name=file.filename, project_id=str(project_id))
     
     try:
-        # file_content = await file.read() # REMOVED: Memory issue
-        # We pass the file object directly for streaming upload
+        file_content = await file.read()
         storage_manager = SupabaseStorageManager()
         upload_result = await storage_manager.upload_file(
-            file=file.file,
+            file=file_content,
             file_name=file_id,
             content_type=file.content_type
         )
     except Exception as e:
         logger.error(f"Error uploading file to Supabase: {e}")
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"signal": ResponseStatus.FILE_UPLOADED_FAILED.value, "message": str(e)})
+
 
     asset_model = await AssetModel.create_instance()
     

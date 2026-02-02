@@ -1,6 +1,7 @@
 from .BaseController import BaseController
 from typing import List
 from stores.llm.LLMEnums import DocumentTypeEnum
+import logging
 import json
 
 from models.ChunkModel import ChunkModel
@@ -183,9 +184,10 @@ class NLPController(BaseController):
 
             file_content = await process_controller.get_file_content(file_id=file_id, bucket_name=bucket_name)
             
-            if file_content is None:
-                self.logger.error(f"File not found in Supabase: {file_id} in {bucket_name}")
+            if not file_content:
+                self.logger.warning(f"Skipping file {file_id}: Could not extract content or file not found in Supabase ({bucket_name})")
                 continue
+
             
             chunks = process_controller.process_file_content(
                 file_content=file_content,
@@ -218,31 +220,16 @@ class NLPController(BaseController):
             )
             
             # Add vectors to chunks for Supabase
-            if self.vectordb_client.settings.VECTOR_DB_BACKEND == "SUPABASE":
+            if self.app_settings.VECTOR_DB_BACKEND == "SUPABASE":
                 for i, vector in enumerate(vectors):
                     file_chunks_data[i]["vector"] = vector
+
 
             # Insert into SQL Table (Supabase)
             inserted_chunks = await chunk_model.insert_many_chunks(file_chunks_data)
             num_records += len(inserted_chunks) if inserted_chunks else 0
             
-            # If using another Vector DB (Qdrant, etc), insert there too
-            if self.vectordb_client.settings.VECTOR_DB_BACKEND != "SUPABASE" and inserted_chunks:
-                 collection_name = self.create_collection_name(project_id=project["project_id"])
-                 
-                 await self.vectordb_client.create_collection(
-                     collection_name=collection_name, 
-                     embedding_size=len(vectors[0])
-                 )
-
-                 await self.vectordb_client.insert_many(
-                     collection_name=collection_name,
-                     texts=[c["chunk_text"] for c in file_chunks_data],
-                     vectors=vectors,
-                     metadata=[c["chunk_metadata"] for c in file_chunks_data],
-                     record_ids=[c["chunk_id"] for c in inserted_chunks],
-                 )
-
             processed_files += 1
 
         return num_records, processed_files
+
