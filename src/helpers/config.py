@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     GENERATION_BACKEND: str
     EMBEDDING_BACKEND: str
     OCR_BACKEND: str
+    OCR_ENABLED: bool = True
 
     # API Keys
     OPENAI_API_KEY: Optional[str] = None
@@ -70,6 +71,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
 
 
 def get_settings() -> Settings:

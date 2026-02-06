@@ -182,7 +182,11 @@ class NLPController(BaseController):
             if asset_record and asset_record.get("asset_config"):
                 bucket_name = asset_record["asset_config"].get("bucket", "fields1")
 
-            file_content = await process_controller.get_file_content(file_id=file_id, bucket_name=bucket_name)
+            file_content = await process_controller.get_file_content(
+                file_id=file_id, 
+                bucket_name=bucket_name,
+                use_ocr=self.app_settings.OCR_ENABLED
+            )
             
             if not file_content:
                 self.logger.warning(f"Skipping file {file_id}: Could not extract content or file not found in Supabase ({bucket_name})")
