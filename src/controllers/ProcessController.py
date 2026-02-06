@@ -19,6 +19,8 @@ class Document:
     metadata: dict
 
 
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 class ProcessController(BaseController):
     def __init__(self, project_id: str):
         super().__init__()
@@ -112,44 +114,32 @@ class ProcessController(BaseController):
 
 
     def process_file_content(self, file_content: list, file_id: str, chunk_size: int = 100, chunk_overlap: int = 20):
-        file_content_texts = [rec.page_content for rec in file_content]
-        file_content_metadata = [rec.metadata for rec in file_content]
-
-        chunks = self.process_simpler_splitter(file_content_texts, file_content_metadata, chunk_size)
+        # Join all parts of the file content (mostly for PDF pages)
+        # Use double newline to maintain some separation between pages
+        full_text = "\n\n".join([rec.page_content for rec in file_content])
         
-        return chunks
-
-    def process_simpler_splitter(self, texts: List[str], metadatas: List[dict], chunk_size: int, splitter_tag: str="\n"):
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            length_function=len,
+            is_separator_regex=False,
+        )
         
-        full_text = " ".join(texts)
-
-        # split by splitter_tag
-        lines = [ doc.strip() for doc in full_text.split(splitter_tag) if len(doc.strip()) >= 10 ]
-
-        chunks = []
-        current_chunk = ""
-
-        for line in lines:
-            current_chunk += line + splitter_tag
-            if len(current_chunk) >= chunk_size:
-                chunks.append(Document(
-                    page_content=current_chunk.strip(),
-                    metadata={}
-                ))
-                current_chunk = ""
-
-        # Always add the remaining content if it has meaningful content (at least 10 characters)
-        if len(current_chunk.strip()) >= 10:
-            chunks.append(Document(
-                page_content=current_chunk.strip(),
-                metadata={}
-            ))
-
-        # If no chunks were created but we have some content, create at least one chunk
+        split_chunks = text_splitter.split_text(full_text)
+        
+        chunks = [
+            Document(
+                page_content=chunk.strip(),
+                metadata={"source": file_id}
+            )
+            for chunk in split_chunks if len(chunk.strip()) >= 10
+        ]
+        
+        # Fallback if no chunks were created but there is content
         if not chunks and full_text.strip():
             chunks.append(Document(
                 page_content=full_text.strip(),
-                metadata={}
+                metadata={"source": file_id}
             ))
 
         return chunks
