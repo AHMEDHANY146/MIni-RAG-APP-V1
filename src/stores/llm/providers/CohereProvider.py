@@ -129,48 +129,62 @@ class CohereProvider(LLMInterface):
       if document_type == DocumentTypeEnum.QUERY.value:
         input_type = "search_query"
 
-      # Implement retry logic with exponential backoff for rate limiting
+      # Implement retry logic and batching for rate limiting
       import asyncio
-      import time
       
       max_retries = 5
       base_delay = 2.0  # Start with 2 second delay to respect rate limits
-      
-      for attempt in range(max_retries):
-          try:
-              # Add delay to respect rate limits (100,000 tokens per minute)
-              await asyncio.sleep(base_delay)
-              
-              response = self.client.embed(
-                model=self.embedding_model_id,
-                texts=processed_texts,
-                input_type=input_type,
-                embedding_types=["float"]
-              )
+      batch_size = 90   # Cohere recommended batch size for trial keys
+      all_embeddings = []
 
-              if not response or not response.embeddings or not response.embeddings.float or len(response.embeddings.float) == 0:
-                  self.logger.error(f"Failed to generate embedding from Cohere. Response: {response}")
-                  return None 
+      # Split texts into batches
+      batches = [processed_texts[i:i + batch_size] for i in range(0, len(processed_texts), batch_size)]
+      self.logger.info(f"Splitting {len(processed_texts)} texts into {len(batches)} batches of {batch_size}")
 
-              return [f for f in response.embeddings.float]
-              
-          except Exception as e:
-              error_msg = str(e).lower()
-              if "limit" in error_msg or "429" in error_msg or "quota" in error_msg or "rate" in error_msg:
-                  if attempt < max_retries - 1:
-                      # Exponential backoff: 2s, 4s, 8s, 16s, 32s
-                      delay = base_delay * (2 ** attempt)
-                      self.logger.warning(f"Rate limit hit, retrying in {delay} seconds (attempt {attempt + 1}/{max_retries})")
-                      await asyncio.sleep(delay)
-                      continue
+      for batch_index, batch in enumerate(batches):
+          success = False
+          for attempt in range(max_retries):
+              try:
+                  # Small delay between batches to stay under token-per-minute limits
+                  if batch_index > 0:
+                      await asyncio.sleep(5.0) # wait 5 seconds between batches for trial accounts
+                  
+                  response = self.client.embed(
+                    model=self.embedding_model_id,
+                    texts=batch,
+                    input_type=input_type,
+                    embedding_types=["float"]
+                  )
+
+                  if not response or not response.embeddings or not response.embeddings.float or len(response.embeddings.float) == 0:
+                      self.logger.error(f"Failed to generate embedding for batch {batch_index + 1}. Response: {response}")
+                      return None 
+
+                  all_embeddings.extend([f for f in response.embeddings.float])
+                  success = True
+                  self.logger.info(f"Successfully processed batch {batch_index + 1}/{len(batches)}")
+                  break # Exit retry loop on success
+                  
+              except Exception as e:
+                  error_msg = str(e).lower()
+                  if "limit" in error_msg or "429" in error_msg or "quota" in error_msg or "rate" in error_msg:
+                      if attempt < max_retries - 1:
+                          # Exponential backoff: 10s, 20s, 40s, 80s, 160s (longer for embeddings)
+                          delay = 10.0 * (2 ** attempt)
+                          self.logger.warning(f"Rate limit hit on batch {batch_index + 1}, retrying in {delay} seconds (attempt {attempt + 1}/{max_retries})")
+                          await asyncio.sleep(delay)
+                          continue
+                      else:
+                          self.logger.error(f"Max retries exceeded for batch {batch_index + 1}: {e}")
+                          raise
                   else:
-                      self.logger.error(f"Max retries exceeded for embedding generation: {e}")
-                      raise
-              else:
-                  # Non-rate-limit error, re-raise immediately
-                  raise e
-      
-      return None
+                      # Non-rate-limit error, re-raise immediately
+                      raise e
+          
+          if not success:
+              return None
+
+      return all_embeddings
 
     def construct_prompt(self, prompt: str, role: str):
       return {
