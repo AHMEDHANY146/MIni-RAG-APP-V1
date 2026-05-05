@@ -77,11 +77,11 @@ def ensure_ssl_certs(cert_path="cert.pem", key_path="key.pem"):
         return False
 
 if __name__ == "__main__":
-    # Get the port from environment variable or default to 22150
+    # Get the port from environment variable or default to 20905
     try:
-        port = int(os.environ.get("PORT", 22150))
+        port = int(os.environ.get("PORT", 20905))
     except ValueError:
-        port = 22150
+        port = 20905
 
     cert_path = "cert.pem"
     key_path = "key.pem"
