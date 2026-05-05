@@ -110,9 +110,9 @@ class NLPController(BaseController):
 
         return results
     
-    async def answer_rag_question(self, project: dict, query: str, limit: int = 10):
+    async def answer_rag_question(self, project: dict, query: str, limit: int = 10, chat_history: list = None):
         
-        answer, full_prompt, chat_history = None, None, None
+        answer, full_prompt, llm_chat_history = None, None, None
 
         # step1: retrieve related documents
         retrieved_documents = await self.search_vector_db_collection(
@@ -122,7 +122,7 @@ class NLPController(BaseController):
         )
 
         if not retrieved_documents or len(retrieved_documents) == 0:
-            return answer, full_prompt, chat_history
+            return answer, full_prompt, llm_chat_history
         
         # step2: Construct LLM prompt
         system_prompt = self.template_parser.get("rag", "system_prompt")
@@ -138,12 +138,22 @@ class NLPController(BaseController):
         footer_prompt = self.template_parser.get("rag", "footer_prompt")
 
         # step3: Construct Generation Client Prompts
-        chat_history = [
+        llm_chat_history = [
             self.generation_client.construct_prompt(
                 prompt=system_prompt,
                 role=self.generation_client.enums.SYSTEM.value,
             )
         ]
+
+        if chat_history:
+            for msg in chat_history:
+                role_value = self.generation_client.enums.USER.value if msg.get("role") == "user" else self.generation_client.enums.ASSISTANT.value
+                llm_chat_history.append(
+                    self.generation_client.construct_prompt(
+                        prompt=msg.get("content", ""),
+                        role=role_value
+                    )
+                )
 
         user_question_prompt = self.template_parser.get("rag", "user_question_prompt", {
             "user_query": query
@@ -154,11 +164,11 @@ class NLPController(BaseController):
         # step4: Retrieve the Answer
         answer = await self.generation_client.generate_text(
             prompt=full_prompt,
-            chat_history=chat_history
+            chat_history=llm_chat_history
         )
 
 
-        return answer, full_prompt, chat_history
+        return answer, full_prompt, llm_chat_history
 
     async def process_project_files(self, project: dict, file_ids: dict, do_reset: int,
                                     chunk_size: int, overlap_size: int, process_controller: object):
