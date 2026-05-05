@@ -65,7 +65,7 @@ Rules:
 - Recommend suitable products based on customer needs.
 - If a product is unavailable, suggest a suitable alternative.
 - Do not mention product details unless the customer asks.
-- Do not welcome the customer (e.g., "Welcome", "Hello") in every message, welcome them only in your first message.
+- Never start your response with a greeting or welcome message (e.g., "Hello", "Welcome", "Hi"). Answer the customer's question directly and immediately without any greeting.
 """
 ]))
 
