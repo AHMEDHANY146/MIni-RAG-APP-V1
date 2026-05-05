@@ -52,21 +52,35 @@ class GeminiProvider(LLMInterface):
 
       # Convert chat history to Gemini format
       contents = []
+      system_instruction_text = None
       for message in chat_history:
         role = message.get("role")
         text_content = message.get("parts", [{}])[0].get("text", "")
+        if role == self.enums.SYSTEM.value:
+          system_instruction_text = text_content
+          continue
+        
+        # Ensure role is valid for Gemini (user or model)
+        if role not in ["user", "model"]:
+            role = "user" # Fallback if somehow an invalid role is present
+            
         contents.append(types.Content(role=role, parts=[types.Part(text=text_content)]))
       
-      # Add current prompt
-      contents.append(types.Content(role="user", parts=[types.Part(text=self.process_text(prompt))]))
+      # Add current prompt without truncating it (process_text truncates to 1024 chars by default)
+      contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
+
+      config = types.GenerateContentConfig(
+          temperature=temperature,
+          max_output_tokens=max_output_tokens,
+      )
+      
+      if system_instruction_text:
+          config.system_instruction = system_instruction_text
 
       response = self.client.models.generate_content(
           model=self.generation_model_id,
           contents=contents,
-          config=types.GenerateContentConfig(
-              temperature=temperature,
-              max_output_tokens=max_output_tokens,
-          )
+          config=config
       )
 
       if not response:

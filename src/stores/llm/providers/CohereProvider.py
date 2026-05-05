@@ -51,7 +51,18 @@ class CohereProvider(LLMInterface):
       max_output_tokens = max_output_tokens if max_output_tokens else self.default_output_max_tokens
       temperature = temperature if temperature else self.default_generation_temperature
 
-      chat_history.append(self.construct_prompt(prompt = prompt, role = CohereRoleEnums.USER.value))
+      preamble = None
+      cohere_history = []
+      
+      for msg in chat_history:
+          role = msg.get("role")
+          text = msg.get("message", "")
+          if role == self.enums.SYSTEM.value:
+              preamble = text
+          else:
+              # Cohere typically expects 'USER' and 'CHATBOT'
+              cohere_role = "USER" if role == self.enums.USER.value else "CHATBOT"
+              cohere_history.append({"role": cohere_role, "message": text})
 
       # Implement retry logic with exponential backoff for rate limiting
       import asyncio
@@ -64,12 +75,20 @@ class CohereProvider(LLMInterface):
               # Add delay to respect rate limits
               await asyncio.sleep(base_delay)
               
-              response =  self.client.chat(
-                model = self.generation_model_id,
-                message = prompt,
-                temperature = temperature,
-                max_tokens = max_output_tokens
-              )
+              kwargs = {
+                  "model": self.generation_model_id,
+                  "message": prompt,
+                  "temperature": temperature,
+                  "max_tokens": max_output_tokens
+              }
+              
+              if preamble:
+                  kwargs["preamble"] = preamble
+                  
+              if cohere_history:
+                  kwargs["chat_history"] = cohere_history
+
+              response = self.client.chat(**kwargs)
 
               if not response or not response.text or len(response.text) == 0:
                   self.logger.error(f"Failed to generate text from Cohere. Response: {response}")
