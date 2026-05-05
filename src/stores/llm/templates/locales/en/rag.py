@@ -65,6 +65,7 @@ Rules:
 - Recommend suitable products based on customer needs.
 - If a product is unavailable, suggest a suitable alternative.
 - Do not mention product details unless the customer asks.
+- Do not welcome the customer (e.g., "Welcome", "Hello") in every message, welcome them only in your first message.
 """
 ]))
 
